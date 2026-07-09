@@ -17,9 +17,10 @@ from modules import dart_client, gemini_client
 
 KST = pytz.timezone('Asia/Seoul')
 
-# Gemini에게 매번 새로 전체 프롬프트를 보내는 구조라, 요청 사이에 살짝 텀을 둬서
-# API 요청 제한(rate limit)에 안 걸리도록 방어한다.
-_GEMINI_REQUEST_DELAY_SEC = 1.5
+# Gemini 무료 티어는 gemini-flash-lite 계열 기준 "분당 15회" 요청 제한이 있다.
+# 1.5초 간격(분당 최대 40회)으로는 이 한도를 쉽게 넘겨서 429가 자주 발생했었음 -
+# 4.5초 간격(분당 최대 13회)으로 늘려 애초에 한도 안쪽에서 움직이도록 한다.
+_GEMINI_REQUEST_DELAY_SEC = 4.5
 
 
 def fetch_dart_filings(company_name, days=14):
