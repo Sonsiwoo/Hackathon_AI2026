@@ -85,8 +85,10 @@ if selected_company_name:
     company_data = df_pred[df_pred['name'] == selected_company_name].copy()
 
     if not company_data.empty:
-        # 날짜 포맷 정리
-        company_data['run_datetime'] = company_data['run_datetime'].astype(str)
+        # 날짜 포맷 정리 - 문자열이 아니라 실제 datetime으로 변환해야 그래프에서
+        # 시간순 정렬이 정확하게 된다 (문자열로 두면 "run_datetime"과 "target_date"의
+        # 형식이 달라서(시:분 포함 여부) 그래프가 순서를 잘못 인식하는 문제가 있었음)
+        company_data['run_datetime'] = pd.to_datetime(company_data['run_datetime'])
 
         latest_pred = company_data.iloc[-1]
         current_price = latest_pred['current_close']
@@ -124,7 +126,12 @@ if selected_company_name:
             ))
 
             # 2. 미래 예측 궤적
-            x_pred = [company_data['run_datetime'].iloc[-1], target_date]
+            # target_date는 "YYYY-MM-DD"(시각 없음=자정)라서, run_datetime(시:분 포함)과
+            # 같은 날짜인 경우 그냥 두면 자정이 더 이른 시각으로 인식되어 그래프가
+            # 거꾸로 그려진다. target_date를 그날의 23:59:59로 맞춰서 항상
+            # run_datetime보다 뒤(미래)로 정렬되도록 보정한다.
+            target_dt = pd.to_datetime(target_date) + pd.Timedelta(hours=23, minutes=59, seconds=59)
+            x_pred = [company_data['run_datetime'].iloc[-1], target_dt]
             y_pred = [current_price, predicted_price]
 
             fig.add_trace(go.Scatter(
