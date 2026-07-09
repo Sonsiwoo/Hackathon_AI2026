@@ -70,7 +70,7 @@ def extract_trends_with_llm(news_items):
     {headlines_text}
     """
     try:
-        response = gemini_client.get_client().models.generate_content(
+        response = gemini_client.generate_content_with_retry(
             model='gemini-flash-latest',
             contents=prompt
         )

@@ -44,7 +44,7 @@ def request_llm_company_candidates(keywords):
     """
 
     try:
-        response = gemini_client.get_client().models.generate_content(
+        response = gemini_client.generate_content_with_retry(
             model='gemini-flash-latest',
             contents=prompt
         )

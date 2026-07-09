@@ -101,7 +101,7 @@ def analyze_with_gemini(company_name, raw_data):
         # 호출 전 안정적인 커넥션을 위한 미세 휴식 + rate limit 방지
         time.sleep(_GEMINI_REQUEST_DELAY_SEC)
 
-        response = gemini_client.get_client().models.generate_content(
+        response = gemini_client.generate_content_with_retry(
             model='gemini-flash-lite-latest',
             contents=prompt,
         )
