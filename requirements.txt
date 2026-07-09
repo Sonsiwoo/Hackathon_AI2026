@@ -1,0 +1,9 @@
+pandas
+finance-datareader
+google-genai
+python-dotenv
+neuralforecast
+pytorch-lightning
+torch
+pandas-ta-classic
+pytz
