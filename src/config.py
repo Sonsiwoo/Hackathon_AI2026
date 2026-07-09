@@ -21,7 +21,11 @@ import sys
 from dotenv import load_dotenv
 
 # .env 파일 내용을 os.environ으로 로드 (파일이 없으면 조용히 아무 것도 안 하고 넘어감)
-load_dotenv()
+# override=True: 이미 시스템/세션에 같은 이름의 환경변수가 설정돼 있어도
+# .env 파일의 값으로 덮어쓴다. (기본값 False면 기존 환경변수가 우선이라,
+# 예전에 터미널에 set으로 넣어뒀던 값이나 시스템 환경변수가 새로 바꾼 .env 값을
+# 조용히 무시해버리는 혼란스러운 상황이 생길 수 있어 명시적으로 override시킴)
+load_dotenv(override=True)
 
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
