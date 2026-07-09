@@ -45,7 +45,7 @@ def request_llm_company_candidates(keywords):
 
     try:
         response = gemini_client.generate_content_with_retry(
-            model='gemini-2.5-flash-lite',
+            model='gemini-flash-lite-latest',
             contents=prompt
         )
         # 줄바꿈 단위로 쪼개서 반환 (한 줄 = "키워드,종목명")
