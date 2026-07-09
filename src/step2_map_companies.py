@@ -6,7 +6,9 @@
   2) Gemini에게 "이 키워드들의 대장주 5개씩" 추천을 요청
   3) FinanceDataReader로 받은 실제 KRX 상장 종목 목록과 대조해 정확한 종목코드/시장구분을 붙임
   4) 결과를 src/step2_mapped_companies.csv로 저장
-     (3단계 step3_predict_stock_price.py가 이 파일의 상위 5행을 예측 대상으로 사용함)
+     (3단계 step3_predict_stock_price.py가 이 파일에 있는 모든 기업을 예측 대상으로 사용함.
+      키워드별로 정확히 5개씩 매핑되지 않을 수 있음 - Gemini가 제안한 종목명이 KRX
+      상장 목록과 매칭 안 되면 map_companies_to_krx()에서 조용히 제외되기 때문)
 
 실행: python step2_map_companies.py  (1단계를 먼저 실행해서 llm_top5_trends.csv가 있어야 함)
 필요 환경변수(.env, 저장소 루트에 위치): GEMINI_API_KEY

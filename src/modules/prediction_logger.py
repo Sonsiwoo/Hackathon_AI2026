@@ -79,6 +79,41 @@ def _save_to_db(result, db_path):
         conn.close()
 
 
+def already_logged_today(code, model='NHITS_stock', log_path=None):
+    """
+    오늘 이 종목(code)/모델(model) 조합으로 이미 예측을 기록했는지 미리 확인한다.
+
+    step3_predict_stock_price.py에서 이 함수를 데이터 조회/지표 계산/NHITS 학습을
+    시작하기 '전'에 호출해서, 이미 오늘 처리된 종목이면 무거운 연산 자체를 건너뛸 수 있게 한다.
+    (log_stock_prediction() 안에도 같은 체크가 있지만, 그건 학습이 다 끝난 '뒤'에야
+     저장 단계에서 걸러내므로 시간 낭비가 있음 - 이 함수는 그 낭비를 막기 위한 사전 체크용)
+
+    Args:
+        code: 종목코드
+        model: 예측 모델 태그 (기본값 'NHITS_stock')
+        log_path: CSV 로그 파일 경로 (지정 안 하면 predictions/stock_prediction_log.csv 사용)
+
+    Returns:
+        True면 오늘 이미 기록됨(건너뛰어도 됨), False면 아직 기록 안 됨(계속 진행해야 함)
+    """
+    log_path = log_path or _DEFAULT_LOG_PATH
+    if not os.path.exists(log_path):
+        return False
+
+    today_str = datetime.now(KST).strftime('%Y-%m-%d')
+    try:
+        existing = pd.read_csv(log_path, dtype={'code': str})
+        already = existing[
+            (existing['run_datetime'].str.startswith(today_str)) &
+            (existing['code'] == str(code)) &
+            (existing['model'] == model)
+        ]
+        return not already.empty
+    except Exception:
+        # 로그 파일을 못 읽으면 "아직 기록 안 됨"으로 간주하고 정상적으로 계속 진행시킨다.
+        return False
+
+
 def log_stock_prediction(keyword, code, name, market, target_date,
                           current_close, predicted_close,
                           model='NHITS_stock', log_path=None, db_path=None):
@@ -103,26 +138,13 @@ def log_stock_prediction(keyword, code, name, market, target_date,
     """
     log_path = log_path or _DEFAULT_LOG_PATH
     db_path = db_path or _DB_PATH
-    today_str = datetime.now(KST).strftime('%Y-%m-%d')
 
     # --- 중복 실행 방지 가드 ---
     # 스크립트를 하루에 여러 번 돌려도 같은 (오늘 날짜, 종목코드, 모델) 조합이면
-    # 이미 기록된 것으로 보고 새로 쌓지 않는다.
-    if os.path.exists(log_path):
-        try:
-            existing = pd.read_csv(log_path, dtype={'code': str})
-            already = existing[
-                (existing['run_datetime'].str.startswith(today_str)) &
-                (existing['code'] == str(code)) &
-                (existing['model'] == model)
-            ]
-            if not already.empty:
-                print(f"⏭ [{model} / {name}] 오늘 예측 이미 저장됨 - 스킵")
-                return
-        except Exception:
-            # 로그 파일이 아직 깨끗하지 않거나(스키마 변경 등) 읽기 실패해도
-            # 중복 체크만 못 할 뿐, 새 예측 기록 자체는 계속 진행한다.
-            pass
+    # 이미 기록된 것으로 보고 새로 쌓지 않는다. (already_logged_today와 동일 로직 재사용)
+    if already_logged_today(code, model, log_path):
+        print(f"⏭ [{model} / {name}] 오늘 예측 이미 저장됨 - 스킵")
+        return
 
     if predicted_close > current_close:
         direction = '상승'
