@@ -64,7 +64,11 @@ def extract_trends_with_llm(news_items):
     prompt = f"""
     다음은 주식 시장 최신 뉴스 헤드라인 100개입니다.
     가장 핫한 '산업군, 테마, 기술 트렌드' 키워드 TOP 5를 추출해주세요.
-    (주의: '지정', '상승' 같은 공시/주식 일반 용어 제외. 오직 산업/테마 명사만 5개 콤마로 구분해서 출력)
+
+    [출력 규칙 - 반드시 지켜주세요]
+    1. 오직 키워드 5개만 콤마로 구분해서 한 줄로 출력하세요. (예: 반도체,인공지능,바이오,원전,우주항공)
+    2. 설명, 인사말, 번호, 마크다운(**) 등 키워드 외의 어떤 텍스트도 절대 포함하지 마세요.
+    3. '지정', '상승' 같은 공시/주식 일반 용어는 제외하고 오직 산업/테마 명사만 사용하세요.
 
     [헤드라인]
     {headlines_text}
@@ -75,8 +79,16 @@ def extract_trends_with_llm(news_items):
             contents=prompt
         )
         result_text = response.text.strip()
+
+        # 프롬프트로 지시해도 LLM이 가끔 설명 문장을 앞에 덧붙이거나(예: "분석 결과는 다음과 같습니다.")
+        # 마크다운(**)으로 감싸는 경우가 있어, 방어적으로 정제한다:
+        # 여러 줄이면 실제 키워드 목록일 가능성이 가장 높은 "마지막 줄"만 사용하고, 마크다운 기호를 제거.
+        lines = [line.strip() for line in result_text.split('\n') if line.strip()]
+        last_line = lines[-1] if lines else result_text
+        last_line = last_line.replace('*', '').strip()
+
         # LLM이 "반도체, 인공지능, 바이오, ..." 형태의 콤마 구분 문자열로 응답하므로 split 후 공백 제거
-        return [kw.strip() for kw in result_text.split(',')]
+        return [kw.strip() for kw in last_line.split(',') if kw.strip()]
     except Exception as e:
         print(f"Gemini API 에러: {e}")
         return []
