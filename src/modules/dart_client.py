@@ -7,11 +7,17 @@ gemini_client.py와 동일한 패턴 - OpenDartReader 인스턴스를 매번 새
 
 import functools
 
-# pip 패키지명은 대문자 섞인 OpenDartReader지만, 실제 import 가능한 모듈명은 소문자 opendartreader.
-# (opendartreader/__init__.py 안에서 `from .dart import OpenDartReader` 로 클래스를 노출함)
-from opendartreader import OpenDartReader
-
 import config
+
+# OpenDartReader 패키지는 버전에 따라 실제 import 구조가 다르다:
+#   - 0.3.x (최신, 소문자 패키지명): from opendartreader import OpenDartReader
+#   - 0.2.x (구버전, 대문자 패키지명): OpenDartReader/__init__.py가 sys.modules를 자기 자신
+#     대신 클래스로 바꿔치기해서, `import OpenDartReader`만 해도 클래스가 바로 잡힘
+# 설치된 버전이 뭐든 상관없이 동작하도록 둘 다 시도한다.
+try:
+    from opendartreader import OpenDartReader
+except ImportError:
+    import OpenDartReader
 
 
 @functools.lru_cache(maxsize=1)
