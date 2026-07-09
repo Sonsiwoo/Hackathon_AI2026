@@ -41,19 +41,23 @@ def load_data():
     trends_path = os.path.join(_REPO_ROOT, 'src', 'llm_top5_trends.csv')
     mapping_path = os.path.join(_REPO_ROOT, 'src', 'step2_mapped_companies.csv')
     prediction_path = os.path.join(_REPO_ROOT, 'predictions', 'stock_prediction_log.csv')
+    summary_path = os.path.join(_REPO_ROOT, 'src', 'llm_dart_news_summary.csv')
 
     # 프로젝트의 다른 CSV들과 동일하게 utf-8-sig(BOM 포함)로 저장되므로 인코딩을 맞춰서 읽는다.
     df_trends = pd.read_csv(trends_path, encoding='utf-8-sig') if os.path.exists(trends_path) else pd.DataFrame()
     df_mapping = pd.read_csv(mapping_path, dtype={'Code': str}, encoding='utf-8-sig') if os.path.exists(mapping_path) else pd.DataFrame()
     df_pred = pd.read_csv(prediction_path, dtype={'code': str}, encoding='utf-8-sig') if os.path.exists(prediction_path) else pd.DataFrame()
+    # step4_summarize_disclosures.py가 아직 한 번도 안 돌았으면 이 파일이 없을 수 있음 - 빈 표로 대체
+    df_summary = pd.read_csv(summary_path, encoding='utf-8-sig') if os.path.exists(summary_path) else pd.DataFrame()
 
     if not df_trends.empty: df_trends.columns = df_trends.columns.str.strip()
     if not df_mapping.empty: df_mapping.columns = df_mapping.columns.str.strip()
     if not df_pred.empty: df_pred.columns = df_pred.columns.str.strip()
+    if not df_summary.empty: df_summary.columns = df_summary.columns.str.strip()
 
-    return df_trends, df_mapping, df_pred
+    return df_trends, df_mapping, df_pred, df_summary
 
-df_trends, df_mapping, df_pred = load_data()
+df_trends, df_mapping, df_pred, df_summary = load_data()
 
 if df_pred.empty:
     st.error("데이터가 없습니다. 백엔드 파이프라인을 먼저 실행해주세요.")
@@ -146,8 +150,26 @@ if selected_company_name:
 
         with tab2:
             st.markdown("#### DART & 뉴스 기반 AI 요약")
-            st.info("실시간 시장 분석 브리핑이 곧 연동됩니다.")
-            st.markdown(f"> **[{selected_keyword}]** 섹터 대장주인 **{selected_company_name}**의 최근 수주 공시 및 실적 발표를 분석 중입니다...")
+
+            company_summaries = (
+                df_summary[df_summary['name'] == selected_company_name]
+                if not df_summary.empty else pd.DataFrame()
+            )
+
+            if company_summaries.empty:
+                st.info(
+                    "아직 이 종목의 공시 브리핑이 없습니다. "
+                    "step4_summarize_disclosures.py를 실행하면 여기에 표시됩니다."
+                )
+            else:
+                sentiment_color = {"긍정": "🟢", "부정": "🔴", "중립": "🟡"}
+                # 최신 공시가 위로 오도록 정렬
+                for _, row in company_summaries.sort_values('date', ascending=False).iterrows():
+                    icon = sentiment_color.get(row['sentiment'], "⚪")
+                    with st.container(border=True):
+                        st.markdown(f"**{icon} {row['title']}** · {row['date']} ({row['source']})")
+                        st.markdown(row['summary'])
+                        st.caption(f"💡 {row['key_takeaways']}")
 
         with tab3:
             st.markdown("#### N-HiTS 예측 원본 데이터 로그")

@@ -7,9 +7,10 @@
       뽑지 않는다. 분야마다 매핑된 종목 수가 다를 수 있음 - KRX 상장 목록과 매칭 안 되는
       LLM 추천 종목은 2단계에서 이미 제외되었기 때문. 예: 4개만 매핑된 분야도 있을 수 있음)
   2) 오늘 기준 최근 1년치 OHLCV 데이터를 종목별로 조회
-  3) 기술적 지표(약 130개)를 계산하고, 그중 숫자형 지표 최대 50개를 피처로 선택
+  3) 기술적 지표(약 130개)를 계산하고, 종목별로 LightGBM을 학습시켜 중요도 상위
+     50개 지표를 선택 (종목마다 다른 지표가 선택될 수 있음)
   4) NHITS 모델을 종목별로 학습시켜 "다음 영업일 종가"를 예측
-  5) 예측 결과를 predictions/stock_prediction_log.csv + backend/stock_predictions.db에 기록
+  5) 예측 결과(+ 사용된 핵심 지표 목록)를 predictions/stock_prediction_log.csv에 기록
 
   지표기반 프로젝트의 step3_technical.py와 달리, 09:00/12:00/16:00 시간대 구분 없이
   스크립트를 실행하는 시점 기준으로 항상 "다음 영업일 하루"만 예측한다.
@@ -82,6 +83,7 @@ if __name__ == "__main__":
                 target_date=pred['target_date'],
                 current_close=pred['current_close'],
                 predicted_close=pred['predicted_close'],
+                top_features=pred['top_features'],
             )
 
             direction = '📈 상승' if pred['predicted_close'] > pred['current_close'] else '📉 하락'

@@ -1,7 +1,7 @@
 """
 [3단계용 모듈] 예측 결과를 CSV 로그 파일에 기록
 
-종목별 예측 결과(현재가/예측가/방향 등)를 predictions/stock_prediction_log.csv에
+종목별 예측 결과(현재가/예측가/방향/사용된 핵심 지표 등)를 predictions/stock_prediction_log.csv에
 한 줄씩 누적 저장한다. (지표기반 프로젝트의 predictions/prediction_log.csv와 같은 위치 관례)
 같은 날 같은 종목을 이미 예측해 기록해뒀다면 중복으로 또 쌓지 않도록 방지 로직도 포함한다.
 
@@ -60,7 +60,7 @@ def already_logged_today(code, model='NHITS_stock', log_path=None):
 
 def log_stock_prediction(keyword, code, name, market, target_date,
                           current_close, predicted_close,
-                          model='NHITS_stock', log_path=None):
+                          model='NHITS_stock', log_path=None, top_features=None):
     """
     한 종목의 예측 결과를 predictions/stock_prediction_log.csv에 한 줄 추가(append)한다.
 
@@ -74,6 +74,10 @@ def log_stock_prediction(keyword, code, name, market, target_date,
                지표기반 프로젝트의 prediction_log.csv에 쓰이는 'NHITS'/'NHITS_technical'
                태그와 헷갈리지 않도록 구분되는 이름을 사용한다.
         log_path: CSV 로그 파일 경로 (지정 안 하면 predictions/stock_prediction_log.csv 사용)
+        top_features: 이 예측에 실제로 사용된 핵심 지표 이름 리스트 (nhits_predictor.
+                      predict_next_close()가 반환하는 'top_features'를 그대로 넘기면 됨).
+                      나중에 "이 예측이 왜 이렇게 나왔는지" 확인하거나, 다시 추출할 필요 없이
+                      재사용할 수 있도록 CSV에 같이 저장해둔다. None이면 빈 값으로 저장.
 
     Returns:
         없음. 파일에 쓰거나, 이미 오늘 같은 종목을 기록했다면 그냥 스킵하고 메시지만 출력한다.
@@ -106,6 +110,8 @@ def log_stock_prediction(keyword, code, name, market, target_date,
         'direction': direction,
         'change': round(predicted_close - current_close, 2),
         'model': model,
+        # 콤마 대신 '|'로 구분 - CSV 컬럼 구분자(,)와 겹치지 않아 따옴표 처리 없이도 안전하게 저장됨
+        'top_features': '|'.join(top_features) if top_features else '',
     }
 
     # predictions/ 폴더가 아직 없으면 만들어준다 (최초 실행 대비)

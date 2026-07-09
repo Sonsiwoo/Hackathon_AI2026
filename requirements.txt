@@ -7,3 +7,6 @@ pytorch-lightning
 torch
 pandas-ta-classic
 pytz
+lightgbm
+scikit-learn
+OpenDartReader

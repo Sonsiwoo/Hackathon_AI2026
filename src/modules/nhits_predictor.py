@@ -5,6 +5,12 @@ NHITS(Neural Hierarchical Interpolation for Time Series)는 시계열 예측용
 딥러닝 모델이다. neuralforecast 라이브러리를 사용하며, 지표기반 프로젝트의
 step3_technical.py 일별(daily) 예측 로직과 동일한 하이퍼파라미터를 그대로 재사용한다.
 
+종목마다 실제로 예측력이 높은 지표는 다르므로, 모든 종목에 항상 같은 지표 50개를
+쓰지 않고 종목별로 LightGBM을 한 번 학습시켜 중요도를 매긴 뒤 상위 50개만 골라 쓴다
+(select_feature_columns). 이 랭킹은 predict_next_close()가 호출될 때마다(=파이프라인을
+실행할 때마다, 보통 하루 한 번) 그 시점의 최신 데이터로 새로 계산되므로, 트렌드/기업
+구성이 바뀌거나 시장 상황이 바뀌면 핵심 지표도 자동으로 함께 바뀐다.
+
 이 파일은 반드시 아래 순서로 동작해야 한다:
   1) pytorch_lightning 버전 호환성 패치(shim) 적용
   2) 그 다음에 neuralforecast를 import
@@ -17,6 +23,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
+from lightgbm import LGBMRegressor
 
 # --- pytorch_lightning 호환성 패치 (shim) ---
 # 일부 pytorch_lightning 최신 버전은 pl.utilities.distributed 모듈을 없애버렸는데,
@@ -39,26 +46,48 @@ from neuralforecast.models import NHITS
 
 def select_feature_columns(df, max_features=50):
     """
-    기술적 지표가 잔뜩 붙은 데이터프레임에서 모델 입력으로 쓸 피처 컬럼을 최대 50개 고른다.
+    기술적 지표가 잔뜩 붙은 데이터프레임에서, 이 종목에 실제로 예측력이 높은
+    피처 컬럼을 LightGBM 중요도 기준 상위 max_features개 고른다.
 
-    LightGBM 등으로 "중요도가 높은 지표"를 따로 골라내는 랭킹 단계는 이 파이프라인에는
-    없다(종목별로 매번 그 과정을 거치기엔 오버스펙이라 생략). 대신 지표기반 프로젝트의
-    intraday(시간별) 예측 로직과 동일하게, 숫자형 컬럼을 등장 순서대로 최대 50개까지
-    단순하게 잘라서 사용한다.
+    이전에는 지표 컬럼을 등장 순서대로 그냥 앞에서부터 50개 잘라 썼는데, 그러면
+    지표 계산 순서가 고정돼 있어서(SMA, EMA, ... 항상 같은 순서) 어떤 종목이든
+    "앞쪽 50개"가 늘 똑같이 뽑히는 문제가 있었다. 지금은 종목별 데이터로 가벼운
+    LightGBM 회귀 모델을 한 번 학습시켜, "다음 시점 종가를 맞히는 데 실제로 얼마나
+    기여했는지"로 지표 순위를 매긴다. NHITS를 학습시키기 직전에 매번 새로 계산되므로
+    종목이 바뀌거나 시장 상황(=데이터)이 바뀌면 선택되는 지표도 함께 바뀐다.
 
     Args:
         df: unique_id/ds/y 및 기술적 지표 컬럼들을 포함한 DataFrame
         max_features: 최대로 사용할 피처 개수 (기본 50개)
 
     Returns:
-        선택된 피처 컬럼명 리스트 (최대 max_features개)
+        중요도 내림차순으로 정렬된 피처 컬럼명 리스트 (최대 max_features개)
     """
     # unique_id(종목 식별자), ds(날짜), y(정답값=종가)는 피처가 아니라 메타/타깃 컬럼이므로 제외
     exclude = {'unique_id', 'ds', 'y'}
-    return [
+    candidate_cols = [
         c for c in df.columns
         if c not in exclude and df[c].dtype.kind in ('f', 'i')  # 실수(f)/정수(i) 타입만
-    ][:max_features]
+    ]
+
+    # 중요도 계산용으로만 쓰는 임시 정제(실제 학습에 쓰일 frame과는 별개) -
+    # inf를 NaN으로 바꾸고 채운 뒤, 그래도 남은 결측 행은 제거
+    work_df = df[candidate_cols + ['y']].replace([np.inf, -np.inf], np.nan).ffill().bfill().dropna()
+
+    # 데이터가 너무 적으면(예: 상장 초기 종목) 중요도 랭킹 자체가 불안정하므로,
+    # 안전하게 예전 방식(등장 순서대로 앞에서부터)으로 폴백한다.
+    if len(work_df) < 30:
+        return candidate_cols[:max_features]
+
+    # "오늘 지표들로 다음 시점 종가를 맞히는" 문제로 정의 - NHITS의 h=1 목표와 동일한 취지
+    X = work_df[candidate_cols].iloc[:-1]
+    y_next = work_df['y'].shift(-1).iloc[:-1]
+
+    model = LGBMRegressor(n_estimators=200, learning_rate=0.05, random_state=42, verbose=-1)
+    model.fit(X, y_next)
+
+    ranked = sorted(zip(candidate_cols, model.feature_importances_), key=lambda pair: pair[1], reverse=True)
+    return [name for name, _ in ranked[:max_features]]
 
 
 def prepare_training_frame(df, unique_id):
@@ -107,6 +136,9 @@ def predict_next_close(df, unique_id, input_size=30, h=1, max_steps=200):
             'predicted_close': 모델이 예측한 다음 영업일 종가,
             'feature_count': 실제로 학습에 사용된 피처 개수,
             'rows_used': 학습에 사용된 유효 데이터 행 수,
+            'top_features': LightGBM 중요도 기준으로 선택된 피처 이름 리스트
+                            (나중에 "이 예측이 왜 이렇게 나왔는지" 확인하거나,
+                             재계산 없이 재사용하고 싶을 때를 위해 그대로 반환)
         }
 
     Raises:
@@ -161,4 +193,5 @@ def predict_next_close(df, unique_id, input_size=30, h=1, max_steps=200):
         'predicted_close': predicted_close,
         'feature_count': len(feature_cols),
         'rows_used': len(frame),
+        'top_features': feature_cols,
     }

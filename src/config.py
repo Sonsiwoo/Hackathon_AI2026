@@ -30,12 +30,14 @@ load_dotenv(override=True)
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+DART_API_KEY = os.getenv("DART_API_KEY")  # step4_summarize_disclosures.py(DART 공시 수집)용
 
 # validate()에서 이름(문자열) → 실제 값을 찾아보기 위한 매핑
 _VALUES = {
     "NAVER_CLIENT_ID": NAVER_CLIENT_ID,
     "NAVER_CLIENT_SECRET": NAVER_CLIENT_SECRET,
     "GEMINI_API_KEY": GEMINI_API_KEY,
+    "DART_API_KEY": DART_API_KEY,
 }
 
 
