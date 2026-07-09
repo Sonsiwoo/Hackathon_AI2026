@@ -40,7 +40,7 @@ def generate_content_with_retry(model, contents, max_retries=3, initial_delay_se
     잠깐 기다렸다가 자동으로 재시도한다 (지수 백오프: 5초 -> 10초 -> 20초 ...).
 
     Args:
-        model: 사용할 모델명 (예: 'gemini-flash-latest')
+        model: 사용할 모델명 (예: 'gemini-2.5-flash-lite')
         contents: Gemini에게 보낼 프롬프트 문자열
         max_retries: 최대 시도 횟수 (기본 3번)
         initial_delay_sec: 첫 재시도 전 대기 시간(초). 재시도할 때마다 2배씩 늘어남

@@ -102,7 +102,7 @@ def analyze_with_gemini(company_name, raw_data):
         time.sleep(_GEMINI_REQUEST_DELAY_SEC)
 
         response = gemini_client.generate_content_with_retry(
-            model='gemini-flash-lite-latest',
+            model='gemini-2.5-flash-lite',
             contents=prompt,
         )
 
