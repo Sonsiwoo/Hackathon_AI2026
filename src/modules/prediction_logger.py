@@ -1,12 +1,17 @@
 """
-[3단계용 모듈] 예측 결과를 CSV 로그 파일에 기록
+[3단계용 모듈] 예측 결과를 CSV 로그 파일 + SQLite DB에 기록
 
 종목별 예측 결과(현재가/예측가/방향 등)를 predictions/stock_prediction_log.csv에
 한 줄씩 누적 저장한다. (지표기반 프로젝트의 predictions/prediction_log.csv와 같은 위치 관례)
 같은 날 같은 종목을 이미 예측해 기록해뒀다면 중복으로 또 쌓지 않도록 방지 로직도 포함한다.
+
+CSV와 별도로, 웹사이트 백엔드(backend/)가 읽어가는 backend/stock_predictions.db(SQLite)에도
+같은 내용을 저장한다. CSV는 사람이 열어보는 백업/원본 기록용, DB는 FastAPI가 조회하는 용도로
+역할을 나눈 것이며 두 저장소는 항상 같은 시점에 함께 쓰인다(하나만 쌓이는 일이 없도록).
 """
 
 import os
+import sqlite3
 from datetime import datetime
 
 import pandas as pd
@@ -20,12 +25,66 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__f
 _PREDICTIONS_DIR = os.path.join(_REPO_ROOT, 'predictions')
 _DEFAULT_LOG_PATH = os.path.join(_PREDICTIONS_DIR, 'stock_prediction_log.csv')
 
+# backend/ 폴더의 FastAPI 서버가 읽는 SQLite DB 파일과 동일한 경로를 가리킨다.
+# (backend/app/database.py의 DB_PATH와 반드시 같은 위치를 가리켜야 함)
+_DB_PATH = os.path.join(_REPO_ROOT, 'backend', 'stock_predictions.db')
+
+_CREATE_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS predictions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_datetime TEXT NOT NULL,
+    keyword TEXT NOT NULL,
+    code TEXT NOT NULL,
+    name TEXT NOT NULL,
+    market TEXT NOT NULL,
+    target_date TEXT NOT NULL,
+    current_close REAL NOT NULL,
+    predicted_close REAL NOT NULL,
+    direction TEXT NOT NULL,
+    change REAL NOT NULL,
+    model TEXT NOT NULL
+)
+"""
+
+
+def _save_to_db(result, db_path):
+    """
+    예측 결과 한 건(dict)을 SQLite predictions 테이블에 insert한다.
+    테이블이 없으면 먼저 만든다(최초 실행 대비).
+
+    Args:
+        result: log_stock_prediction() 내부에서 만든 예측 결과 딕셔너리
+        db_path: SQLite DB 파일 경로
+    """
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(_CREATE_TABLE_SQL)
+        conn.execute(
+            """
+            INSERT INTO predictions
+                (run_datetime, keyword, code, name, market, target_date,
+                 current_close, predicted_close, direction, change, model)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                result['run_datetime'], result['keyword'], result['code'],
+                result['name'], result['market'], result['target_date'],
+                result['current_close'], result['predicted_close'],
+                result['direction'], result['change'], result['model'],
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
 
 def log_stock_prediction(keyword, code, name, market, target_date,
                           current_close, predicted_close,
-                          model='NHITS_stock', log_path=None):
+                          model='NHITS_stock', log_path=None, db_path=None):
     """
-    한 종목의 예측 결과를 predictions/stock_prediction_log.csv에 한 줄 추가(append)한다.
+    한 종목의 예측 결과를 predictions/stock_prediction_log.csv와
+    backend/stock_predictions.db(SQLite) 양쪽에 함께 기록한다.
 
     Args:
         keyword: 이 종목이 속한 트렌드 키워드 (예: '반도체')
@@ -36,12 +95,14 @@ def log_stock_prediction(keyword, code, name, market, target_date,
         model: 어떤 모델로 만든 예측인지 표시하는 태그 (기본값 'NHITS_stock').
                지표기반 프로젝트의 prediction_log.csv에 쓰이는 'NHITS'/'NHITS_technical'
                태그와 헷갈리지 않도록 구분되는 이름을 사용한다.
-        log_path: 로그 파일 경로 (지정 안 하면 predictions/stock_prediction_log.csv 사용)
+        log_path: CSV 로그 파일 경로 (지정 안 하면 predictions/stock_prediction_log.csv 사용)
+        db_path: SQLite DB 파일 경로 (지정 안 하면 backend/stock_predictions.db 사용)
 
     Returns:
-        없음. 파일에 쓰거나, 이미 오늘 같은 종목을 기록했다면 그냥 스킵하고 메시지만 출력한다.
+        없음. 파일/DB에 쓰거나, 이미 오늘 같은 종목을 기록했다면 그냥 스킵하고 메시지만 출력한다.
     """
     log_path = log_path or _DEFAULT_LOG_PATH
+    db_path = db_path or _DB_PATH
     today_str = datetime.now(KST).strftime('%Y-%m-%d')
 
     # --- 중복 실행 방지 가드 ---
@@ -94,4 +155,8 @@ def log_stock_prediction(keyword, code, name, market, target_date,
         log_path, mode='a', header=not os.path.exists(log_path),
         index=False, encoding='utf-8-sig'
     )
+
+    # 웹사이트 백엔드가 읽는 DB에도 같은 내용을 저장 (CSV와 항상 함께 씀)
+    _save_to_db(result, db_path)
+
     print(f"✅ [{model}] {name}({code}) 예측 결과 저장 완료 (target={target_date}, {direction})")
