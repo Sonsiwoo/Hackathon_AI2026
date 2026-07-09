@@ -75,7 +75,7 @@ def extract_trends_with_llm(news_items):
     """
     try:
         response = gemini_client.generate_content_with_retry(
-            model='gemini-pro-latest',
+            model='gemini-flash-lite-latest',
             contents=prompt
         )
         result_text = response.text.strip()
